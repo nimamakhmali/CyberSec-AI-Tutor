@@ -1,0 +1,96 @@
+cybersec-ai-tutor/
+│
+├── app.py                          # Streamlit entry point
+├── README.md
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── Dockerfile
+│
+├── config/
+│   ├── __init__.py
+│   └── settings.py                 # Pydantic settings
+│
+├── app/
+│   ├── __init__.py
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── logging_config.py
+│   │   └── exceptions.py
+│   │
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── ollama_client.py
+│   │   ├── embeddings.py
+│   │   └── model_manager.py
+│   │
+│   ├── rag/
+│   │   ├── __init__.py
+│   │   ├── loaders.py
+│   │   ├── chunking.py
+│   │   ├── ingestion.py
+│   │   ├── vectorstore.py
+│   │   ├── retriever.py
+│   │   ├── reranker.py
+│   │   └── pipeline.py
+│   │
+│   ├── graph/
+│   │   ├── __init__.py
+│   │   ├── state.py
+│   │   ├── nodes.py
+│   │   └── workflow.py
+│   │
+│   ├── prompts/
+│   │   ├── __init__.py
+│   │   ├── system.py
+│   │   ├── rag.py
+│   │   ├── education.py
+│   │   └── classification.py
+│   │
+│   ├── memory/
+│   │   ├── __init__.py
+│   │   ├── conversation.py
+│   │   └── summarizer.py
+│   │
+│   ├── security/
+│   │   ├── __init__.py
+│   │   ├── policy.py
+│   │   └── sanitizer.py
+│   │
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── layout.py
+│   │   ├── components.py
+│   │   ├── styles.py
+│   │   └── chat.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── hashing.py
+│       └── formatting.py
+│
+├── data/
+│   ├── documents/
+│   │   ├── cybersecurity/
+│   │   │   └── cybersecurity_fundamentals.md
+│   │   ├── company/
+│   │   │   └── company_overview.md
+│   │   └── network_security/
+│   │       └── network_security_guide.md
+│   └── chroma/                     # auto-created
+│
+├── scripts/
+│   ├── ingest.py
+│   └── reset_vectorstore.py
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_rag.py
+│   ├── test_memory.py
+│   ├── test_prompts.py
+│   └── test_security.py
+│
+└── assets/
+    └── logo.svg
