@@ -1,38 +1,54 @@
 """
-Document fingerprinting utilities for incremental ingestion.
-Uses SHA-256 of file content to detect changes.
+Document hashing utilities for deduplication.
 """
-
 from __future__ import annotations
 
 import hashlib
 from pathlib import Path
 
 
-def compute_file_hash(file_path: Path, chunk_size: int = 65536) -> str:
+def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     """
-    Compute SHA-256 hash of a file's contents.
-
-    Reads in chunks to handle large files without loading into RAM.
+    Compute hash of a file for deduplication.
 
     Args:
         file_path: Path to the file
-        chunk_size: Read chunk size in bytes
+        algorithm: Hash algorithm (sha256 recommended)
 
     Returns:
-        Hex-encoded SHA-256 hash string
+        Hex digest string
     """
-    sha256 = hashlib.sha256()
+    h = hashlib.new(algorithm)
     with open(file_path, "rb") as f:
-        while data := f.read(chunk_size):
-            sha256.update(data)
-    return sha256.hexdigest()
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def compute_text_hash(text: str) -> str:
     """
-    Compute SHA-256 hash of a text string.
+    Compute hash of text content.
 
-    Used for detecting duplicate document content regardless of filename.
+    Args:
+        text: Text to hash
+
+    Returns:
+        SHA-256 hex digest
     """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def compute_chunk_id(source: str, chunk_index: int, text_hash: str) -> str:
+    """
+    Create a deterministic unique ID for a document chunk.
+
+    Args:
+        source: Source file path
+        chunk_index: Index of chunk in document
+        text_hash: Hash of chunk text
+
+    Returns:
+        Unique chunk identifier
+    """
+    raw = f"{source}::{chunk_index}::{text_hash}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]

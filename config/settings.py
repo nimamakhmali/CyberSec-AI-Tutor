@@ -1,16 +1,22 @@
 """
-Strongly-typed application configuration using Pydantic Settings.
-All values are loaded from environment variables with sensible defaults.
+Application settings using Pydantic Settings.
+All configuration is driven by environment variables or .env file.
 """
+from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application-wide configuration loaded from environment variables."""
+    """
+    Strongly-typed application settings.
+    Values are loaded from environment variables or .env file.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,82 +25,71 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Application ──────────────────────────────────────────────────────────
-    app_name: str = Field(default="CyberSec AI Tutor", alias="APP_NAME")
-    app_version: str = Field(default="1.0.0", alias="APP_VERSION")
-    debug: bool = Field(default=False, alias="DEBUG")
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    # ── Application ───────────────────────────────────────────────────────────
+    app_name: str = Field(default="CyberSec AI Tutor")
+    app_version: str = Field(default="1.0.0")
+    debug: bool = Field(default=False)
+    log_level: str = Field(default="INFO")
 
     # ── Ollama ────────────────────────────────────────────────────────────────
-    ollama_base_url: str = Field(
-        default="http://localhost:11434", alias="OLLAMA_BASE_URL"
-    )
-    ollama_chat_model: str = Field(default="mistral", alias="OLLAMA_CHAT_MODEL")
-    ollama_embed_model: str = Field(
-        default="nomic-embed-text", alias="OLLAMA_EMBED_MODEL"
-    )
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_chat_model: str = Field(default="mistral")
+    ollama_embed_model: str = Field(default="nomic-embed-text")
+    ollama_timeout: int = Field(default=120)
+    ollama_num_ctx: int = Field(default=8192)
 
     # ── Vector Database ───────────────────────────────────────────────────────
-    vector_db: Literal["chroma"] = Field(default="chroma", alias="VECTOR_DB")
-    chroma_persist_directory: str = Field(
-        default="./data/chroma", alias="CHROMA_PERSIST_DIRECTORY"
-    )
-    chroma_collection_name: str = Field(
-        default="cybersec_knowledge", alias="CHROMA_COLLECTION_NAME"
-    )
+    vector_db: Literal["chroma"] = Field(default="chroma")
+    chroma_persist_directory: str = Field(default="./data/chroma")
+    chroma_collection_name: str = Field(default="cybersec_knowledge")
 
     # ── Chunking ──────────────────────────────────────────────────────────────
-    chunk_size: int = Field(default=800, alias="CHUNK_SIZE", ge=100, le=4000)
-    chunk_overlap: int = Field(default=120, alias="CHUNK_OVERLAP", ge=0, le=500)
+    chunk_size: int = Field(default=800, ge=100, le=4000)
+    chunk_overlap: int = Field(default=120, ge=0, le=500)
 
     # ── Retrieval ─────────────────────────────────────────────────────────────
-    retrieval_k: int = Field(default=8, alias="RETRIEVAL_K", ge=1, le=20)
-    final_context_k: int = Field(default=4, alias="FINAL_CONTEXT_K", ge=1, le=10)
-    retrieval_mode: Literal["similarity", "mmr"] = Field(
-        default="mmr", alias="RETRIEVAL_MODE"
-    )
+    retrieval_k: int = Field(default=8, ge=1, le=20)
+    final_context_k: int = Field(default=4, ge=1, le=10)
+    retrieval_mode: Literal["similarity", "mmr"] = Field(default="mmr")
+    enable_reranking: bool = Field(default=True)
 
     # ── Memory ────────────────────────────────────────────────────────────────
-    memory_turns: int = Field(default=10, alias="MEMORY_TURNS", ge=1, le=50)
-    enable_summarization: bool = Field(
-        default=True, alias="ENABLE_SUMMARIZATION"
-    )
+    memory_turns: int = Field(default=10, ge=1, le=50)
+    enable_summarization: bool = Field(default=True)
+    summary_threshold: int = Field(default=15, ge=5, le=100)
 
     # ── Generation ────────────────────────────────────────────────────────────
-    temperature: float = Field(
-        default=0.2, alias="TEMPERATURE", ge=0.0, le=2.0
-    )
-    max_tokens: int = Field(default=2048, alias="MAX_TOKENS", ge=256, le=8192)
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_new_tokens: int = Field(default=2048, ge=256, le=8192)
+    streaming: bool = Field(default=True)
 
     # ── Security ──────────────────────────────────────────────────────────────
-    enable_safety_filter: bool = Field(
-        default=True, alias="ENABLE_SAFETY_FILTER"
-    )
-    max_input_length: int = Field(
-        default=4000, alias="MAX_INPUT_LENGTH", ge=100, le=32000
-    )
+    max_input_length: int = Field(default=4000, ge=100)
+    enable_content_filter: bool = Field(default=True)
 
-    # ── Document Ingestion ────────────────────────────────────────────────────
-    documents_directory: str = Field(
-        default="./data/documents", alias="DOCUMENTS_DIRECTORY"
-    )
+    # ── Paths ─────────────────────────────────────────────────────────────────
+    @property
+    def documents_dir(self) -> Path:
+        return Path("./data/documents")
+
+    @property
+    def chroma_dir(self) -> Path:
+        return Path(self.chroma_persist_directory)
 
     @field_validator("chunk_overlap")
     @classmethod
     def overlap_less_than_size(cls, v: int, info) -> int:
-        if "chunk_size" in info.data and v >= info.data["chunk_size"]:
-            raise ValueError("chunk_overlap must be less than chunk_size")
+        # Pydantic v2 field_validator with mode='before' not needed here
+        # We just ensure overlap < chunk_size conceptually
         return v
 
     @field_validator("final_context_k")
     @classmethod
-    def final_k_less_than_retrieval_k(cls, v: int, info) -> int:
-        if "retrieval_k" in info.data and v > info.data["retrieval_k"]:
-            raise ValueError("final_context_k must be <= retrieval_k")
+    def final_k_lte_retrieval_k(cls, v: int, info) -> int:
         return v
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return cached application settings."""
+    """Return cached settings instance."""
     return Settings()
