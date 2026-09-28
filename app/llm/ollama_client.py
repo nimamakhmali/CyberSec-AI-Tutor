@@ -1,112 +1,137 @@
 """
-Ollama LLM client with health checking, retry logic and streaming support.
-Wraps LangChain's Ollama integration with application-level error handling.
+Ollama LLM client factory.
+Creates configured LangChain Ollama instances.
 """
-
 from __future__ import annotations
 
 import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from langchain_ollama import ChatOllama
-from langchain_core.messages import BaseMessage
-from langchain_core.outputs import ChatGeneration
-
-from app.core.exceptions import OllamaConnectionError, OllamaModelNotFoundError
+from app.core.exceptions import OllamaConnectionError, OllamaModelError
 from app.core.logging_config import get_logger
-from config.settings import Settings
+from config.settings import Settings, get_settings
 
 logger = get_logger(__name__)
 
 
-def check_ollama_health(base_url: str, timeout: float = 5.0) -> bool:
+def check_ollama_health(settings: Settings | None = None) -> bool:
     """
-    Verify that the Ollama server is reachable.
-
+    Check if Ollama server is reachable.
     Returns True if healthy, False otherwise.
-    Does NOT raise — callers decide how to handle unavailability.
     """
+    if settings is None:
+        settings = get_settings()
     try:
-        with httpx.Client(timeout=timeout) as client:
-            response = client.get(f"{base_url}/api/tags")
-            return response.status_code == 200
+        response = httpx.get(
+            f"{settings.ollama_base_url}/api/tags",
+            timeout=5.0,
+        )
+        return response.status_code == 200
     except (httpx.ConnectError, httpx.TimeoutException, Exception):
         return False
 
 
-def check_model_available(base_url: str, model_name: str, timeout: float = 5.0) -> bool:
+def list_ollama_models(settings: Settings | None = None) -> list[str]:
     """
-    Check if a specific model is available in Ollama.
+    List models available in the local Ollama instance.
+    Returns list of model names.
     """
+    if settings is None:
+        settings = get_settings()
     try:
-        with httpx.Client(timeout=timeout) as client:
-            response = client.get(f"{base_url}/api/tags")
-            if response.status_code != 200:
-                return False
-            data = response.json()
-            models = [m.get("name", "").split(":")[0] for m in data.get("models", [])]
-            model_base = model_name.split(":")[0]
-            return model_base in models
-    except Exception:
-        return False
-
-
-def get_available_models(base_url: str, timeout: float = 5.0) -> list[str]:
-    """Return list of models available in Ollama."""
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            response = client.get(f"{base_url}/api/tags")
-            if response.status_code != 200:
-                return []
-            data = response.json()
-            return [m.get("name", "") for m in data.get("models", [])]
-    except Exception:
+        response = httpx.get(
+            f"{settings.ollama_base_url}/api/tags",
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return [m["name"] for m in data.get("models", [])]
+    except Exception as e:
+        logger.warning("Failed to list Ollama models", error=str(e))
         return []
 
 
-def create_chat_llm(settings: Settings, streaming: bool = False) -> ChatOllama:
+def create_chat_llm(
+    settings: Settings | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
+    streaming: bool = True,
+) -> ChatOllama:
     """
-    Create a configured ChatOllama instance.
+    Create a ChatOllama instance with configured parameters.
 
     Args:
-        settings: Application settings
-        streaming: Enable streaming mode
+        settings: Application settings (uses global if None)
+        model: Override model name
+        temperature: Override temperature
+        streaming: Whether to enable streaming
 
     Returns:
         Configured ChatOllama instance
 
     Raises:
-        OllamaConnectionError: If Ollama server is not reachable
-        OllamaModelNotFoundError: If the model is not available
+        OllamaConnectionError: If server is unreachable
     """
-    if not check_ollama_health(settings.ollama_base_url):
+    if settings is None:
+        settings = get_settings()
+
+    if not check_ollama_health(settings):
         raise OllamaConnectionError(
-            f"Cannot connect to Ollama at {settings.ollama_base_url}. "
-            "Please ensure Ollama is running."
+            f"Ollama server unreachable at {settings.ollama_base_url}",
+            details="Ensure Ollama is running: ollama serve",
         )
 
+    resolved_model = model or settings.ollama_chat_model
+    resolved_temp = temperature if temperature is not None else settings.temperature
+
     logger.info(
-        "Creating ChatOllama instance",
-        model=settings.ollama_chat_model,
-        base_url=settings.ollama_base_url,
+        "Creating chat LLM",
+        model=resolved_model,
+        temperature=resolved_temp,
         streaming=streaming,
-        temperature=settings.temperature,
     )
 
     return ChatOllama(
-        model=settings.ollama_chat_model,
         base_url=settings.ollama_base_url,
-        temperature=settings.temperature,
-        num_predict=settings.max_tokens,
-        streaming=streaming,
+        model=resolved_model,
+        temperature=resolved_temp,
+        num_ctx=settings.ollama_num_ctx,
+        num_predict=settings.max_new_tokens,
+        timeout=settings.ollama_timeout,
     )
 
 
-def create_streaming_llm(settings: Settings) -> ChatOllama:
-    """Create a streaming-enabled ChatOllama instance."""
-    return create_chat_llm(settings, streaming=True)
+def create_embeddings(
+    settings: Settings | None = None,
+    model: str | None = None,
+) -> OllamaEmbeddings:
+    """
+    Create an OllamaEmbeddings instance.
+
+    Args:
+        settings: Application settings (uses global if None)
+        model: Override embedding model name
+
+    Returns:
+        Configured OllamaEmbeddings instance
+
+    Raises:
+        OllamaConnectionError: If server is unreachable
+    """
+    if settings is None:
+        settings = get_settings()
+
+    if not check_ollama_health(settings):
+        raise OllamaConnectionError(
+            f"Ollama server unreachable at {settings.ollama_base_url}",
+            details="Ensure Ollama is running: ollama serve",
+        )
+
+    resolved_model = model or settings.ollama_embed_model
+
+    logger.info("Creating embeddings model", model=resolved_model)
+
+    return OllamaEmbeddings(
+        base_url=settings.ollama_base_url,
+        model=resolved_model,
+    )

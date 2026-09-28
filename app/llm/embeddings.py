@@ -1,61 +1,45 @@
 """
-Local embedding model integration via Ollama.
-Abstracted behind a factory so the embedding backend can be swapped.
+Embedding management with caching.
+Abstracts embedding creation to allow future backend swaps.
 """
-
 from __future__ import annotations
 
-from langchain_ollama import OllamaEmbeddings
 from langchain_core.embeddings import Embeddings
 
-from app.core.exceptions import EmbeddingError, OllamaConnectionError
 from app.core.logging_config import get_logger
-from app.llm.ollama_client import check_ollama_health
-from config.settings import Settings
+from app.llm.ollama_client import create_embeddings
+from config.settings import Settings, get_settings
 
 logger = get_logger(__name__)
 
 
-def create_embeddings(settings: Settings) -> Embeddings:
+class EmbeddingManager:
     """
-    Create the embedding model instance.
-
-    Currently uses Ollama embeddings. The factory pattern allows
-    switching to other backends (HuggingFace, sentence-transformers, etc.)
-    via configuration without changing calling code.
-
-    Args:
-        settings: Application settings
-
-    Returns:
-        LangChain-compatible Embeddings instance
-
-    Raises:
-        OllamaConnectionError: If Ollama is unavailable
-        EmbeddingError: If embedding model initialization fails
+    Manages embedding model lifecycle.
+    Designed for single initialization, cached for performance.
     """
-    if not check_ollama_health(settings.ollama_base_url):
-        raise OllamaConnectionError(
-            f"Cannot connect to Ollama at {settings.ollama_base_url}"
-        )
 
-    logger.info(
-        "Initializing embedding model",
-        model=settings.ollama_embed_model,
-        backend="ollama",
-    )
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
+        self._embeddings: Embeddings | None = None
 
-    try:
-        embeddings = OllamaEmbeddings(
-            model=settings.ollama_embed_model,
-            base_url=settings.ollama_base_url,
-        )
-        # Perform a quick smoke test
-        _ = embeddings.embed_query("test")
-        logger.info("Embedding model initialized successfully")
-        return embeddings
-    except Exception as e:
-        raise EmbeddingError(
-            f"Failed to initialize embedding model '{settings.ollama_embed_model}': {e}",
-            details={"model": settings.ollama_embed_model, "error": str(e)},
-        ) from e
+    def get_embeddings(self) -> Embeddings:
+        """
+        Get or create the embedding model instance.
+        Lazy initialization for performance.
+        """
+        if self._embeddings is None:
+            logger.info(
+                "Initializing embedding model",
+                model=self._settings.ollama_embed_model,
+            )
+            self._embeddings = create_embeddings(self._settings)
+        return self._embeddings
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query string."""
+        return self.get_embeddings().embed_query(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed multiple documents."""
+        return self.get_embeddings().embed_documents(texts)
