@@ -1,75 +1,58 @@
 """
-Application-specific exception hierarchy.
-All domain errors inherit from CyberSecTutorError for consistent handling.
+Custom exception hierarchy for CyberSec AI Tutor.
 """
+from __future__ import annotations
 
 
 class CyberSecTutorError(Exception):
     """Base exception for all application errors."""
 
-    def __init__(self, message: str, details: dict | None = None) -> None:
+    def __init__(self, message: str, details: str | None = None) -> None:
         super().__init__(message)
         self.message = message
-        self.details = details or {}
+        self.details = details
 
+    def __str__(self) -> str:
+        if self.details:
+            return f"{self.message} | Details: {self.details}"
+        return self.message
 
-# ── LLM Errors ───────────────────────────────────────────────────────────────
 
 class OllamaConnectionError(CyberSecTutorError):
     """Raised when Ollama server is unreachable."""
 
 
-class OllamaModelNotFoundError(CyberSecTutorError):
-    """Raised when the requested model is not available in Ollama."""
-
-
-class LLMGenerationError(CyberSecTutorError):
-    """Raised when LLM fails to generate a response."""
+class OllamaModelError(CyberSecTutorError):
+    """Raised when the requested model is not available."""
 
 
 class EmbeddingError(CyberSecTutorError):
     """Raised when embedding generation fails."""
 
 
-# ── RAG Errors ────────────────────────────────────────────────────────────────
-
-class DocumentLoadError(CyberSecTutorError):
-    """Raised when a document cannot be loaded."""
-
-
-class ChunkingError(CyberSecTutorError):
-    """Raised when document chunking fails."""
-
-
 class VectorStoreError(CyberSecTutorError):
     """Raised when vector store operations fail."""
 
 
+class DocumentIngestionError(CyberSecTutorError):
+    """Raised when document ingestion fails."""
+
+
 class RetrievalError(CyberSecTutorError):
-    """Raised when document retrieval fails."""
+    """Raised when retrieval fails."""
 
-
-class IngestionError(CyberSecTutorError):
-    """Raised during document ingestion pipeline."""
-
-
-# ── Security Errors ───────────────────────────────────────────────────────────
 
 class InputValidationError(CyberSecTutorError):
     """Raised when user input fails validation."""
 
 
-class SafetyPolicyViolation(CyberSecTutorError):
-    """Raised when input violates safety policy."""
+class PromptConstructionError(CyberSecTutorError):
+    """Raised when prompt construction fails."""
 
 
-# ── Memory Errors ─────────────────────────────────────────────────────────────
+class WorkflowError(CyberSecTutorError):
+    """Raised when LangGraph workflow execution fails."""
 
-class MemoryError(CyberSecTutorError):
-    """Raised when conversation memory operations fail."""
-
-
-# ── Configuration Errors ──────────────────────────────────────────────────────
 
 class ConfigurationError(CyberSecTutorError):
-    """Raised when required configuration is missing or invalid."""
+    """Raised when configuration is invalid."""
