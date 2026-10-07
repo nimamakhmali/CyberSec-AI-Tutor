@@ -132,6 +132,10 @@ class IngestionTracker:
         stored_hash = self._hashes.get(str(file_path))
         return stored_hash == current_hash
 
+    def was_ever_ingested(self, file_path: Path) -> bool:
+        """Check if this file was ever ingested (regardless of hash)."""
+        return str(file_path) in self._hashes
+
     def mark_ingested(self, file_path: Path, file_hash: str) -> None:
         """Mark a file as ingested."""
         self._hashes[str(file_path)] = file_hash
@@ -219,7 +223,7 @@ def ingest_file(
 
 def ingest_directory(
     documents_dir: Path,
-    vector_store_adder: Any,
+    vector_store: Any,
     settings: Settings | None = None,
     force_reingest: bool = False,
     tracker_path: Path | None = None,
@@ -229,9 +233,9 @@ def ingest_directory(
 
     Args:
         documents_dir: Root directory containing documents
-        vector_store_adder: Callable that accepts list[Document] and adds to vector store
+        vector_store: VectorStoreBase instance (must have add_documents and delete_by_source)
         settings: Application settings
-        force_reingest: Skip deduplication check
+        force_reingest: Skip deduplication check and re-ingest all files
         tracker_path: Path to ingestion tracker file
 
     Returns:
@@ -265,6 +269,15 @@ def ingest_directory(
                 stats["skipped"] += 1
                 continue
 
+            # For re-ingestion (changed file or force mode), delete old chunks first
+            source = str(file_path.relative_to(documents_dir))
+            if force_reingest or tracker.was_ever_ingested(file_path):
+                # File was previously ingested (with different hash) or force mode
+                # Delete old chunks from vector store
+                deleted_count = vector_store.delete_by_source(source)
+                if deleted_count > 0:
+                    logger.info("Deleted stale chunks", source=source, count=deleted_count)
+
             chunks, metadata = ingest_file(file_path, documents_dir, settings)
 
             if not chunks:
@@ -272,7 +285,7 @@ def ingest_directory(
                 continue
 
             # Add to vector store
-            vector_store_adder(chunks)
+            vector_store.add_documents(chunks)
 
             tracker.mark_ingested(file_path, file_hash)
 

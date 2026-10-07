@@ -1,7 +1,7 @@
 """
 Reranking system to improve retrieval precision.
-Implements a lightweight cross-encoder-style reranker using the LLM.
-For production, consider a dedicated reranking model.
+Implements a lightweight heuristic reranker using keyword overlap and technical term matching.
+For production, consider a dedicated reranking model (e.g., cross-encoder).
 """
 from __future__ import annotations
 

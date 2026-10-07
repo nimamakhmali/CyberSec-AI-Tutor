@@ -78,6 +78,19 @@ class VectorStoreBase(ABC):
         """Delete the entire collection."""
         ...
 
+    @abstractmethod
+    def delete_by_source(self, source: str) -> int:
+        """
+        Delete all documents from a specific source file.
+
+        Args:
+            source: Source file path or identifier
+
+        Returns:
+            Number of documents deleted
+        """
+        ...
+
 
 class ChromaVectorStore(VectorStoreBase):
     """
@@ -239,6 +252,38 @@ class ChromaVectorStore(VectorStoreBase):
         except Exception as e:
             raise VectorStoreError(
                 "Failed to delete collection",
+                details=str(e),
+            ) from e
+
+    def delete_by_source(self, source: str) -> int:
+        """
+        Delete all documents from a specific source file.
+
+        Args:
+            source: Source file path or identifier
+
+        Returns:
+            Number of documents deleted
+        """
+        try:
+            # Query for documents with this source
+            results = self._store._collection.get(
+                where={"source": source},
+                include=["metadatas"]
+            )
+
+            ids = results.get("ids", [])
+            if not ids:
+                logger.info("No documents found for source", source=source)
+                return 0
+
+            # Delete by IDs
+            self._store._collection.delete(ids=ids)
+            logger.info("Deleted documents by source", source=source, count=len(ids))
+            return len(ids)
+        except Exception as e:
+            raise VectorStoreError(
+                "Failed to delete documents by source",
                 details=str(e),
             ) from e
 
