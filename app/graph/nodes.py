@@ -109,7 +109,7 @@ def intent_detection_node(state: dict[str, Any]) -> dict[str, Any]:
 def query_rewriting_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     Rewrite the query for better retrieval using conversation context.
-    Uses simple heuristics to avoid LLM overhead for clear queries.
+    Produces a standalone query that can be understood without conversation history.
     """
     ws = ConversationWorkflowState(**state)
     ws.add_step("query_rewriting")
@@ -117,7 +117,7 @@ def query_rewriting_node(state: dict[str, Any]) -> dict[str, Any]:
     query = ws.validated_query or ws.user_query
 
     # Simple heuristic rewriting without LLM call
-    # Detect follow-up questions
+    # Detect follow-up questions that need context
     followup_patterns = [
         r"^(what|how)\s+about\b",
         r"^(and|but|also|what|why|how)\s+\w{1,4}\b",
@@ -134,22 +134,26 @@ def query_rewriting_node(state: dict[str, Any]) -> dict[str, Any]:
     )
 
     if is_followup and ws.chat_history:
-        # Extract topic from recent messages
-        recent_content = []
-        for msg in ws.chat_history[-4:]:
+        # Extract the main topic from recent conversation
+        recent_turns = []
+        for msg in ws.chat_history[-6:]:
             if hasattr(msg, "content") and isinstance(msg.content, str):
-                recent_content.append(msg.content[:150])
+                recent_turns.append(msg.content)
 
-        if recent_content:
-            # Contextual rewrite: append recent topic
-            context_snippet = recent_content[-1][:100]
-            ws.rewritten_query = f"{query} [Context: {context_snippet}]"
+        if recent_turns:
+            # Build a contextual summary of recent topics
+            recent_context = " ".join(recent_turns[-3:])
+            # Extract key entities/topics (simple approach)
+            # In production, this could use an LLM call
+            ws.rewritten_query = f"{query} (context: {recent_context[:200]})"
         else:
             ws.rewritten_query = query
     else:
+        # For non-followup queries, use as-is (already standalone)
         ws.rewritten_query = query
 
     ws.debug_info["rewritten_query"] = ws.rewritten_query
+    ws.debug_info["is_followup"] = is_followup
 
     logger.debug(
         "Query rewritten",
@@ -335,6 +339,48 @@ def error_handler_node(state: dict[str, Any]) -> dict[str, Any]:
         "Error handled",
         error_type=ws.error_type,
         error=ws.error,
+    )
+
+    return ws.to_dict()
+
+
+# ── Node 7: Retrieval Decision ──────────────────────────────────────────────────
+
+def retrieval_decision_node(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Decide whether retrieval is needed based on intent and query characteristics.
+    This enables conditional retrieval to skip vector store for simple queries.
+    """
+    ws = ConversationWorkflowState(**state)
+    ws.add_step("retrieval_decision")
+
+    # Intents that typically don't need retrieval
+    no_retrieval_intents = {
+        "UNKNOWN",
+    }
+
+    # Check if intent suggests retrieval is not needed
+    if ws.intent in no_retrieval_intents:
+        ws.should_retrieve = False
+    else:
+        # Default to retrieving for all other intents
+        ws.should_retrieve = True
+
+    # Also skip retrieval for very short queries that are likely greetings
+    query = ws.validated_query or ws.user_query
+    if len(query.strip()) < 3:
+        ws.should_retrieve = False
+
+    ws.debug_info["retrieval_decision"] = {
+        "should_retrieve": ws.should_retrieve,
+        "intent": ws.intent,
+        "query_length": len(query),
+    }
+
+    logger.info(
+        "Retrieval decision",
+        should_retrieve=ws.should_retrieve,
+        intent=ws.intent,
     )
 
     return ws.to_dict()

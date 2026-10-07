@@ -17,6 +17,7 @@ from app.graph.nodes import (
     input_validation_node,
     intent_detection_node,
     query_rewriting_node,
+    retrieval_decision_node,
     retrieval_node,
 )
 from app.graph.state import ConversationWorkflowState
@@ -31,6 +32,14 @@ def should_handle_error(state: dict[str, Any]) -> str:
     if ws.error and not ws.response:
         return "error_handler"
     return "continue"
+
+
+def route_after_retrieval_decision(state: dict[str, Any]) -> str:
+    """Conditional edge: route to retrieval or skip to generation based on should_retrieve."""
+    ws = ConversationWorkflowState(**state)
+    if ws.should_retrieve:
+        return "retrieve"
+    return "skip_retrieval"
 
 
 def build_workflow(
@@ -60,6 +69,7 @@ def build_workflow(
     workflow.add_node("input_validation", input_validation_node)
     workflow.add_node("intent_detection", intent_detection_node)
     workflow.add_node("query_rewriting", query_rewriting_node)
+    workflow.add_node("retrieval_decision", retrieval_decision_node)
     workflow.add_node("retrieval", retrieval_node(rag_pipeline))
     workflow.add_node("generation", generation_node(llm))
     workflow.add_node("citations", citation_node)
@@ -69,7 +79,18 @@ def build_workflow(
     workflow.add_edge(START, "input_validation")
     workflow.add_edge("input_validation", "intent_detection")
     workflow.add_edge("intent_detection", "query_rewriting")
-    workflow.add_edge("query_rewriting", "retrieval")
+    workflow.add_edge("query_rewriting", "retrieval_decision")
+
+    # Conditional retrieval
+    workflow.add_conditional_edges(
+        "retrieval_decision",
+        route_after_retrieval_decision,
+        {
+            "retrieve": "retrieval",
+            "skip_retrieval": "generation",
+        },
+    )
+
     workflow.add_edge("retrieval", "generation")
 
     # Conditional error handling after generation
@@ -196,14 +217,18 @@ class CyberSecWorkflow:
             model_name=model_name,
         )
 
-        # Run through validation, intent, rewriting, retrieval
+        # Run through validation, intent, rewriting, retrieval decision, retrieval
         state = initial_state.to_dict()
 
         try:
             state = input_validation_node(state)
             state = intent_detection_node(state)
             state = query_rewriting_node(state)
-            state = retrieval_node(self._rag_pipeline)(state)
+            state = retrieval_decision_node(state)
+            
+            ws_check = ConversationWorkflowState(**state)
+            if ws_check.should_retrieve:
+                state = retrieval_node(self._rag_pipeline)(state)
 
             ws = ConversationWorkflowState(**state)
             query = ws.validated_query or user_query
