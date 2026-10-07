@@ -7,8 +7,13 @@ import json
 from typing import Any
 
 import streamlit as st
+import hashlib
 
 from app.ui.styles import LOGO_SVG
+
+def _stable_hash(text: str) -> str:
+    """Generate a stable short hash for UI keys."""
+    return hashlib.md5(text.encode()).hexdigest()[:8]
 
 
 def render_logo_and_title() -> None:
@@ -172,10 +177,15 @@ def render_quick_action_bar(question: str) -> str | None:
         "🔄 Analogy": f"Explain using a real-world analogy: {question}",
     }
 
+    import hashlib
+    
+    def _stable_hash(text: str) -> str:
+        return hashlib.md5(text.encode()).hexdigest()[:8]
+    
     cols = st.columns(3)
     for i, (label, modified_q) in enumerate(actions.items()):
         with cols[i % 3]:
-            if st.button(label, key=f"action_{hash(label)}_{hash(question)[:8]}"):
+            if st.button(label, key=f"action_{_stable_hash(label)}_{_stable_hash(question)}"):
                 return modified_q
 
     return None
@@ -214,7 +224,7 @@ def render_welcome_screen() -> str | None:
             ("🔥", "How does a firewall work?"),
         ]
         for icon, q in questions_left:
-            if st.button(f"{icon} {q}", key=f"welcome_{hash(q)}", use_container_width=True):
+            if st.button(f"{icon} {q}", key=f"welcome_{_stable_hash(q)}", use_container_width=True):
                 return q
 
     with col2:
@@ -227,7 +237,7 @@ def render_welcome_screen() -> str | None:
             ("📊", "Quiz me on network security concepts"),
         ]
         for icon, q in questions_right:
-            if st.button(f"{icon} {q}", key=f"welcome_{hash(q)}", use_container_width=True):
+            if st.button(f"{icon} {q}", key=f"welcome_{_stable_hash(q)}", use_container_width=True):
                 return q
 
     st.markdown("---")

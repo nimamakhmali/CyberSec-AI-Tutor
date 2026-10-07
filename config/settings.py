@@ -79,13 +79,19 @@ class Settings(BaseSettings):
     @field_validator("chunk_overlap")
     @classmethod
     def overlap_less_than_size(cls, v: int, info) -> int:
-        # Pydantic v2 field_validator with mode='before' not needed here
-        # We just ensure overlap < chunk_size conceptually
+        """Ensure chunk_overlap < chunk_size."""
+        chunk_size = info.data.get("chunk_size")
+        if chunk_size is not None and v >= chunk_size:
+            raise ValueError(f"chunk_overlap ({v}) must be less than chunk_size ({chunk_size})")
         return v
 
     @field_validator("final_context_k")
     @classmethod
     def final_k_lte_retrieval_k(cls, v: int, info) -> int:
+        """Ensure final_context_k <= retrieval_k."""
+        retrieval_k = info.data.get("retrieval_k")
+        if retrieval_k is not None and v > retrieval_k:
+            raise ValueError(f"final_context_k ({v}) must be <= retrieval_k ({retrieval_k})")
         return v
 
 

@@ -245,6 +245,7 @@ class ConversationMemory:
                     "timestamp": t.timestamp,
                     "sources": t.sources,
                     "intent": t.intent,
+                    "model": t.model,
                     "feedback": t.feedback,
                 }
                 for t in self._state.turns

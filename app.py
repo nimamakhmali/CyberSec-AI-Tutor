@@ -332,15 +332,16 @@ def _process_user_query(
             )
 
             try:
-                for token in stream_gen:
-                    full_response += token
-                    response_placeholder.markdown(full_response + "▋")
+                # Manually iterate to capture generator return value (final state)
+                while True:
+                    try:
+                        token = next(stream_gen)
+                        full_response += token
+                        response_placeholder.markdown(full_response + "▋")
+                    except StopIteration as e:
+                        final_state = e.value if e.value else {}
+                        break
 
-                # Get final state (returned from generator)
-                final_state = stream_gen.gi_frame.f_locals.get("state", {}) if stream_gen.gi_frame else {}
-
-            except StopIteration as e:
-                final_state = e.value if e.value else {}
             except Exception as e:
                 logger.error("Streaming error", error=str(e))
                 full_response = (

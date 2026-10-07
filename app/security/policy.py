@@ -19,6 +19,7 @@ SENSITIVE_TOPICS = [
     "ddos attack against", "scanning without permission",
     "bypass authentication", "crack password of",
     "hack into", "gain unauthorized",
+    "buffer overflow", "sql injection", "xss", "cross-site scripting",
 ]
 
 # Topics that are clearly educational/legitimate

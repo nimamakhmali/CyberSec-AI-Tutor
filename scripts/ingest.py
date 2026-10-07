@@ -111,13 +111,10 @@ def main() -> None:
     print("Starting ingestion...")
     print("-" * 40 + "\n")
 
-    def add_to_store(chunks):
-        vector_store.add_documents(chunks)
-
     try:
         stats = ingest_directory(
             documents_dir=docs_dir,
-            vector_store_adder=add_to_store,
+            vector_store=vector_store,
             settings=settings,
             force_reingest=args.force,
             tracker_path=settings.chroma_dir / "ingestion_tracker.json",
